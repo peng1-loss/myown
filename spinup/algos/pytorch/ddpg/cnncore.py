@@ -28,7 +28,7 @@ def cnn(sizes, activation, output_dim):
 def count_vars(module):
     return sum([np.prod(p.shape) for p in module.parameters()])
 
-class MLPActor(nn.Module):
+class CNNActor(nn.Module):
 
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation,):#drop act_limit
         super().__init__()
@@ -40,7 +40,7 @@ class MLPActor(nn.Module):
         # Return output from network scaled to action space limits.
         return self.self.pi(obs)#drop act_limit
 
-class MLPQFunction(nn.Module):
+class CNNQFunction(nn.Module):
 
     def __init__(self, obs_dim, hidden_sizes, activation):#drop act_limit
         super().__init__()
@@ -50,7 +50,7 @@ class MLPQFunction(nn.Module):
         q = self.q(torch.cat([obs, act], dim=-1))
         return torch.squeeze(q, -1) # Critical to ensure q has right shape.
 
-class MLPActorCritic(nn.Module):
+class CNNActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
                  activation=nn.ReLU):
@@ -61,8 +61,8 @@ class MLPActorCritic(nn.Module):
         #act_limit = action_space.high[0]
 
         # build policy and value functions
-        self.pi = MLPActor(obs_dim, act_dim, hidden_sizes, activation)#drop act_limit
-        self.q = MLPQFunction(obs_dim, act_dim, hidden_sizes, activation)
+        self.pi = CNNActor(obs_dim, act_dim, hidden_sizes, activation)#drop act_limit
+        self.q = CNNQFunction(obs_dim, act_dim, hidden_sizes, activation)
 
     def act(self, obs):
         with torch.no_grad():
