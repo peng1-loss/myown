@@ -17,21 +17,22 @@ class ReplayBuffer:
     """
     A simple FIFO experience replay buffer for DDPG agents.
     """
-
     def __init__(self, obs_dim, act_dim, size):
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
+        self.truncation_buf=np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, next_obs, done):
+    def store(self, obs, act, rew, next_obs, done,truncation):
         self.obs_buf[self.ptr] = obs
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
+        self.truncation_buf[self.ptr] = truncation
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
@@ -41,13 +42,14 @@ class ReplayBuffer:
                      obs2=self.obs2_buf[idxs],
                      act=self.act_buf[idxs],
                      rew=self.rew_buf[idxs],
-                     done=self.done_buf[idxs])
+                     done=self.done_buf[idxs],
+                     truncation=self.truncation_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
 
 
 
-def ddpg(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0, 
-         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
+def ddpg(env_fn, actor_critic=core.CNNActorCritic, ac_kwargs=dict(), seed=0, 
+         steps_per_epoch=4000, epochs=100, replay_size=int(1e5), gamma=0.99, 
          polyak=0.995, pi_lr=1e-3, q_lr=1e-3, batch_size=100, start_steps=10000, 
          update_after=1000, update_every=50, act_noise=0.1, num_test_episodes=10, 
          max_ep_len=1000, logger_kwargs=dict(), save_freq=1):
@@ -142,9 +144,9 @@ def ddpg(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     np.random.seed(seed)
 
     env, test_env = env_fn(), env_fn()
-    print(env.observation_space.shape)
+    
     obs_dim = env.observation_space.shape
-    print(env.action_space.shape)
+    
     act_dim = env.action_space.shape
     
 
@@ -168,8 +170,7 @@ def ddpg(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     # Set up function for computing DDPG Q-loss
     def compute_loss_q(data):
-        o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
-
+        o, a, r, o2, d  = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
         q = ac.q(o,a)
 
         # Bellman backup for Q function
@@ -238,7 +239,7 @@ def ddpg(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     def test_agent():
         for j in range(num_test_episodes):
-            o, d, ep_ret, ep_len = test_env.reset(), False, 0, 0
+            o, d , ep_ret, ep_len = test_env.reset(), False, 0, 0
             while not(d or (ep_len == max_ep_len)):
                 # Take deterministic actions at test time (noise_scale=0)
                 o, r, d, _ = test_env.step(get_action(o, 0))
@@ -263,7 +264,10 @@ def ddpg(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             a = env.action_space.sample()
 
         # Step the env
-        o2, r, d, _ = env.step(a)
+        
+        temp=env.step(a)
+        temp
+        o2, r, d, tr, _ = env.step(a)
         ep_ret += r
         ep_len += 1
 
@@ -273,7 +277,8 @@ def ddpg(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         d = False if ep_len==max_ep_len else d
 
         # Store experience to replay buffer
-        replay_buffer.store(o, a, r, o2, d)
+        
+        replay_buffer.store(o, a, r, o2, d, tr)
 
         # Super critical, easy to overlook step: make sure to update 
         # most recent observation!
@@ -329,7 +334,7 @@ if __name__ == '__main__':
     from spinup.utils.run_utils import setup_logger_kwargs
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    ddpg(lambda : gym.make(args.env), actor_critic=core.MLPActorCritic,
+    ddpg(lambda : gym.make(args.env), actor_critic=core.CNNActorCritic,
          ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), 
          gamma=args.gamma, seed=args.seed, epochs=args.epochs,
          logger_kwargs=logger_kwargs)
