@@ -21,18 +21,17 @@ class ReplayBuffer:
         self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
-        self.rew_buf = np.zeros(size, dtype=np.float32)
+        self.rew_buf = np.zeros(size, dtype=np.float32) 
         self.done_buf = np.zeros(size, dtype=np.float32)
-        self.truncation_buf=np.zeros(size, dtype=np.float32)
         self.ptr, self.size, self.max_size = 0, 0, size
 
-    def store(self, obs, act, rew, next_obs, done,truncation):
+    def store(self, obs, act, rew, next_obs, done):
         self.obs_buf[self.ptr] = obs
+        
         self.obs2_buf[self.ptr] = next_obs
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
-        self.truncation_buf[self.ptr] = truncation
         self.ptr = (self.ptr+1) % self.max_size
         self.size = min(self.size+1, self.max_size)
 
@@ -42,8 +41,7 @@ class ReplayBuffer:
                      obs2=self.obs2_buf[idxs],
                      act=self.act_buf[idxs],
                      rew=self.rew_buf[idxs],
-                     done=self.done_buf[idxs],
-                     truncation=self.truncation_buf[idxs])
+                     done=self.done_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
 
 
@@ -267,7 +265,7 @@ def ddpg(env_fn, actor_critic=core.CNNActorCritic, ac_kwargs=dict(), seed=0,
         
         temp=env.step(a)
         temp
-        o2, r, d, tr, _ = env.step(a)
+        o2, r, d, tr , _ = env.step(a)
         ep_ret += r
         ep_len += 1
 
@@ -278,7 +276,7 @@ def ddpg(env_fn, actor_critic=core.CNNActorCritic, ac_kwargs=dict(), seed=0,
 
         # Store experience to replay buffer
         
-        replay_buffer.store(o, a, r, o2, d, tr)
+        replay_buffer.store(o[0], a, r, o2[0], d)
 
         # Super critical, easy to overlook step: make sure to update 
         # most recent observation!
